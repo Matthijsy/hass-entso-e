@@ -5,11 +5,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import timedelta
 from typing import Any
 
 from homeassistant.components.sensor import (
-    DOMAIN,
     RestoreSensor,
     SensorDeviceClass,
     SensorEntityDescription,
@@ -23,8 +21,9 @@ from homeassistant.helpers.device_registry import DeviceEntryType, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
-from homeassistant.util import utcnow
+from homeassistant.util import dt  # use dt.utcnow()
 
+from .utils import bucket_time
 from .const import (
     ATTRIBUTION,
     CONF_CURRENCY,
@@ -32,7 +31,7 @@ from .const import (
     CONF_ENTITY_NAME,
     DEFAULT_CURRENCY,
     DEFAULT_ENERGY_SCALE,
-    DOMAIN,
+    DOMAIN as INTEGRATION_DOMAIN,
 )
 from .coordinator import EntsoeCoordinator
 
@@ -58,16 +57,16 @@ def sensor_descriptions(
             state_class=SensorStateClass.MEASUREMENT,
             icon="mdi:currency-eur",
             suggested_display_precision=3,
-            value_fn=lambda coordinator: coordinator.get_current_hourprice(),
+            value_fn=lambda coordinator: coordinator.get_current_price(),
         ),
         EntsoeEntityDescription(
-            key="next_hour_price",
+            key="next_hour_price",  # Technically the next period price
             name="Next hour electricity market price",
             native_unit_of_measurement=f"{currency}/{energy_scale}",
             state_class=SensorStateClass.MEASUREMENT,
             icon="mdi:currency-eur",
             suggested_display_precision=3,
-            value_fn=lambda coordinator: coordinator.get_next_hourprice(),
+            value_fn=lambda coordinator: coordinator.get_next_price(),
         ),
         EntsoeEntityDescription(
             key="min_price",
@@ -137,18 +136,19 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up ENTSO-e price sensor entries."""
-    entsoe_coordinator = hass.data[DOMAIN][config_entry.entry_id]
+    entsoe_coordinator = hass.data[INTEGRATION_DOMAIN][config_entry.entry_id]
 
     entities = []
-    entity = {}
     for description in sensor_descriptions(
         currency=config_entry.options.get(CONF_CURRENCY, DEFAULT_CURRENCY),
         energy_scale=config_entry.options.get(CONF_ENERGY_SCALE, DEFAULT_ENERGY_SCALE),
     ):
-        entity = description
         entities.append(
             EntsoeSensor(
-                entsoe_coordinator, entity, config_entry.options[CONF_ENTITY_NAME]
+                coordinator=entsoe_coordinator,
+                description=description,
+                name=config_entry.options.get(CONF_ENTITY_NAME, ""),
+                entry_id=config_entry.entry_id,  # pass entry_id
             )
         )
 
@@ -166,19 +166,21 @@ class EntsoeSensor(CoordinatorEntity, RestoreSensor):
         coordinator: EntsoeCoordinator,
         description: EntsoeEntityDescription,
         name: str = "",
+        entry_id: str | None = None,
     ) -> None:
         """Initialize the sensor."""
         self.description = description
         self.last_update_success = True
+        self._entry_id = entry_id
 
         if name not in (None, ""):
             # The Id used for addressing the entity in the ui, recorder history etc.
-            self.entity_id = f"{DOMAIN}.{name}_{description.name}"
+            self.entity_id = f"{INTEGRATION_DOMAIN}.{name}_{description.name}"
             # unique id in .storage file for ui configuration.
             self._attr_unique_id = f"entsoe.{name}_{description.key}"
             self._attr_name = f"{description.name} ({name})"
         else:
-            self.entity_id = f"{DOMAIN}.{description.name}"
+            self.entity_id = f"{INTEGRATION_DOMAIN}.{description.name}"
             self._attr_unique_id = f"entsoe.{description.key}"
             self._attr_name = f"{description.name}"
 
@@ -190,12 +192,14 @@ class EntsoeSensor(CoordinatorEntity, RestoreSensor):
             else 2
         )
 
+        # Use provided entry_id instead of coordinator.config_entry
+        device_ident_entry_id = self._entry_id if self._entry_id else "entsoe"
         self._attr_device_info = DeviceInfo(
             entry_type=DeviceEntryType.SERVICE,
             identifiers={
                 (
-                    DOMAIN,
-                    f"{coordinator.config_entry.entry_id}_entsoe",
+                    INTEGRATION_DOMAIN,
+                    f"{device_ident_entry_id}_entsoe",
                 )
             },
             manufacturer="entso-e",
@@ -210,22 +214,21 @@ class EntsoeSensor(CoordinatorEntity, RestoreSensor):
 
     async def async_update(self) -> None:
         """Get the latest data and updates the states."""
-        # _LOGGER.debug(f"update function for '{self.entity_id} called.'")
-
         # Cancel the currently scheduled event if there is any
         if self._unsub_update:
             self._unsub_update()
             self._unsub_update = None
 
-        # Schedule the next update at exactly the next whole hour sharp
+        # Schedule the next update after the interval
         self._unsub_update = event.async_track_point_in_utc_time(
             self.hass,
             self._update_job,
-            utcnow().replace(minute=0, second=0) + timedelta(hours=1),
+            bucket_time(dt.utcnow(), self.coordinator.period_minutes)
+            + self.coordinator.update_interval,
         )
 
-        # ensure the calculated data is refreshed by the changing hour
-        self.coordinator.sync_calculator()
+        # ensure the calculated data is refreshed
+        await self.coordinator.sync_calculator()
 
         if (
             self.coordinator.data is not None
@@ -233,7 +236,6 @@ class EntsoeSensor(CoordinatorEntity, RestoreSensor):
         ):
             value: Any = None
             try:
-                # _LOGGER.debug(f"current coordinator.data value: {self.coordinator.data}")
                 value = self.entity_description.value_fn(self.coordinator)
 
                 self._attr_native_value = value
