@@ -8,6 +8,7 @@ COMPONENT_TITLE = "ENTSO-e Transparency Platform"
 CONF_API_KEY = "api_key"
 CONF_ENTITY_NAME = "name"
 CONF_AREA = "area"
+CONF_PERIOD = "period"
 CONF_MODIFYER = "modifyer"
 CONF_CURRENCY = "currency"
 CONF_ENERGY_SCALE = "energy_scale"
@@ -18,6 +19,7 @@ CONF_VAT_VALUE = "VAT_value"
 DEFAULT_MODIFYER = "{{current_price}}"
 DEFAULT_CURRENCY = CURRENCY_EURO
 DEFAULT_ENERGY_SCALE = "kWh"
+DEFAULT_PERIOD = "PT60M"
 
 # default is only for internal use / backwards compatibility
 CALCULATION_MODE = {
@@ -27,7 +29,8 @@ CALCULATION_MODE = {
     "publish": "publish",
 }
 
-ENERGY_SCALES = { "kWh": 1000, "MWh": 1 }
+ENERGY_SCALES = {"kWh": 1000, "MWh": 1}
+PERIOD_OPTIONS = ["PT60M", "PT15M"]
 
 # Commented ones are not working at entsoe
 AREA_INFO = {
@@ -157,17 +160,4 @@ AREA_INFO = {
         "Currency": "EUR",
     },
     "CH": {"code": "CH", "name": "Switzerland", "VAT": 0.21, "Currency": "EUR"},
-    #  "UK":{"code":"UK", "name":"United Kingdom", "VAT":0.21, "Currency":"EUR"},
-    #  "AL":{"code":"AL", "name":"Albania", "VAT":0.21, "Currency":"EUR"},
-    #  "BA":{"code":"BA", "name":"Bosnia and Herz.", "VAT":0.21, "Currency":"EUR"},
-    #  "CY":{"code":"CY", "name":"Cyprus", "VAT":0.21, "Currency":"EUR"},
-    #  "GE":{"code":"GE", "name":"Georgia", "VAT":0.21, "Currency":"EUR"},
-    #  "IE":{"code":"IE", "name":"Ireland", "VAT":0.21, "Currency":"EUR"},
-    #  "XK":{"code":"XK", "name":"Kosovo", "VAT":0.21, "Currency":"EUR"},
-    #  "MT":{"code":"MT", "name":"Malta", "VAT":0.21, "Currency":"EUR"},
-    #  "MD":{"code":"MD", "name":"Moldova", "VAT":0.21, "Currency":"EUR"},
-    #  "ME":{"code":"ME", "name":"Montenegro", "VAT":0.21, "Currency":"EUR"},
-    #  "MK":{"code":"MK", "name":"North Macedonia", "VAT":0.21, "Currency":"EUR"},
-    #  "TR":{"code":"TR", "name":"Turkey", "VAT":0.21, "Currency":"EUR"},
-    #  "UA":{"code":"UA", "name":"Ukraine", "VAT":0.21, "Currency":"EUR"},
 }
